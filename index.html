@@ -1,159 +1,152 @@
-<script>
+async function autoCrop() {
 
-let image = new Image();
+    status.innerText = "Detecting ID Card corners...";
 
-const fileInput = document.getElementById("fileInput");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const status = document.getElementById("status");
+    const maxSize = 1000;
 
-fileInput.addEventListener("change", function () {
-
-    const file = this.files[0];
-
-    if (!file) return;
-
-    const reader = new FileReader();
-
-    reader.onload = function (e) {
-
-        image.onload = function () {
-
-            canvas.width = image.width;
-            canvas.height = image.height;
-
-            ctx.drawImage(image, 0, 0);
-
-            status.innerText =
-                "ID Card Image Loaded";
-
-        };
-
-        image.src = e.target.result;
-    };
-
-    reader.readAsDataURL(file);
-});
-
-
-function processImage() {
-
-    if (!image.src) {
-        alert("Please select ID Card image first.");
-        return;
-    }
-
-    status.innerText =
-        "Detecting ID Card...";
-
-    canvas.width = image.width;
-    canvas.height = image.height;
-
-    ctx.drawImage(image, 0, 0);
-
-    setTimeout(() => {
-
-        autoCrop();
-
-    }, 300);
-}
-
-
-function autoCrop() {
-
-    const sourceCanvas =
-        document.createElement("canvas");
-
-    const sourceCtx =
-        sourceCanvas.getContext("2d");
-
-    sourceCanvas.width =
-        image.width;
-
-    sourceCanvas.height =
-        image.height;
-
-    sourceCtx.drawImage(
-        image,
-        0,
-        0
+    let scale = Math.min(
+        1,
+        maxSize / Math.max(image.width, image.height)
     );
 
-    const img =
-        sourceCtx.getImageData(
+    const w = Math.round(image.width * scale);
+    const h = Math.round(image.height * scale);
+
+    const tempCanvas = document.createElement("canvas");
+
+    tempCanvas.width = w;
+    tempCanvas.height = h;
+
+    const tempCtx = tempCanvas.getContext("2d");
+
+    tempCtx.drawImage(
+        image,
+        0,
+        0,
+        w,
+        h
+    );
+
+    const imgData =
+        tempCtx.getImageData(
             0,
             0,
-            sourceCanvas.width,
-            sourceCanvas.height
+            w,
+            h
         );
 
-    const data = img.data;
+    const data = imgData.data;
 
-    let minX = sourceCanvas.width;
-    let minY = sourceCanvas.height;
+    let points = [];
 
-    let maxX = 0;
-    let maxY = 0;
+    /*
+        Find strong edges.
+    */
 
-    const threshold = 45;
+    for (let y = 2; y < h - 2; y += 3) {
 
-    for (
-        let y = 0;
-        y < sourceCanvas.height;
-        y += 4
-    ) {
+        for (let x = 2; x < w - 2; x += 3) {
 
-        for (
-            let x = 0;
-            x < sourceCanvas.width;
-            x += 4
-        ) {
+            const p =
+                (y * w + x) * 4;
 
-            const index =
-                (y * sourceCanvas.width + x) * 4;
+            const right =
+                (y * w + x + 1) * 4;
 
-            const r = data[index];
-            const g = data[index + 1];
-            const b = data[index + 2];
+            const down =
+                ((y + 1) * w + x) * 4;
 
-            const brightness =
-                (r + g + b) / 3;
+            const r1 = data[p];
+            const g1 = data[p + 1];
+            const b1 = data[p + 2];
 
-            if (brightness > threshold) {
+            const r2 = data[right];
+            const g2 = data[right + 1];
+            const b2 = data[right + 2];
 
-                if (x < minX)
-                    minX = x;
+            const r3 = data[down];
+            const g3 = data[down + 1];
+            const b3 = data[down + 2];
 
-                if (y < minY)
-                    minY = y;
+            const brightness1 =
+                (r1 + g1 + b1) / 3;
 
-                if (x > maxX)
-                    maxX = x;
+            const brightness2 =
+                (r2 + g2 + b2) / 3;
 
-                if (y > maxY)
-                    maxY = y;
+            const brightness3 =
+                (r3 + g3 + b3) / 3;
+
+            const edge =
+                Math.abs(
+                    brightness1 -
+                    brightness2
+                )
+                +
+                Math.abs(
+                    brightness1 -
+                    brightness3
+                );
+
+            if (edge > 100) {
+
+                points.push({
+                    x: x,
+                    y: y
+                });
+
             }
         }
     }
 
-    if (
-        minX >= maxX ||
-        minY >= maxY
-    ) {
+    /*
+        If enough points exist,
+        calculate approximate card boundary.
+    */
+
+    if (points.length < 20) {
 
         status.innerText =
-            "Auto Crop Failed";
+            "Could not detect ID Card.";
 
         ctx.drawImage(
             image,
             0,
-            0
+            0,
+            canvas.width,
+            canvas.height
         );
 
         return;
     }
 
-    const margin = 10;
+    let minX = w;
+    let minY = h;
+
+    let maxX = 0;
+    let maxY = 0;
+
+    points.forEach(p => {
+
+        if (p.x < minX)
+            minX = p.x;
+
+        if (p.y < minY)
+            minY = p.y;
+
+        if (p.x > maxX)
+            maxX = p.x;
+
+        if (p.y > maxY)
+            maxY = p.y;
+
+    });
+
+    /*
+        Add small safety margin.
+    */
+
+    const margin = 8;
 
     minX =
         Math.max(
@@ -169,150 +162,113 @@ function autoCrop() {
 
     maxX =
         Math.min(
-            image.width,
+            w,
             maxX + margin
         );
 
     maxY =
         Math.min(
-            image.height,
+            h,
             maxY + margin
         );
 
-    const cropWidth =
+    let cropW =
         maxX - minX;
 
-    const cropHeight =
+    let cropH =
         maxY - minY;
 
-    const croppedCanvas =
+    /*
+        ID card ratio.
+        Standard card ratio is about 1.586.
+    */
+
+    const targetRatio = 1.586;
+
+    const currentRatio =
+        cropW / cropH;
+
+    if (currentRatio > targetRatio) {
+
+        const newW =
+            cropH * targetRatio;
+
+        const difference =
+            (cropW - newW) / 2;
+
+        minX += difference;
+
+        cropW = newW;
+
+    } else {
+
+        const newH =
+            cropW / targetRatio;
+
+        const difference =
+            (cropH - newH) / 2;
+
+        minY += difference;
+
+        cropH = newH;
+
+    }
+
+    /*
+        Create final high-resolution crop.
+    */
+
+    const outputWidth = 1600;
+    const outputHeight =
+        Math.round(
+            outputWidth / targetRatio
+        );
+
+    const outputCanvas =
         document.createElement("canvas");
 
-    croppedCanvas.width =
-        cropWidth;
+    outputCanvas.width =
+        outputWidth;
 
-    croppedCanvas.height =
-        cropHeight;
+    outputCanvas.height =
+        outputHeight;
 
-    const croppedCtx =
-        croppedCanvas.getContext("2d");
+    const outputCtx =
+        outputCanvas.getContext("2d");
 
-    croppedCtx.drawImage(
+    outputCtx.imageSmoothingEnabled = true;
+
+    outputCtx.imageSmoothingQuality =
+        "high";
+
+    outputCtx.drawImage(
         image,
 
-        minX,
-        minY,
-        cropWidth,
-        cropHeight,
+        minX / scale,
+        minY / scale,
+
+        cropW / scale,
+        cropH / scale,
 
         0,
         0,
-        cropWidth,
-        cropHeight
+
+        outputWidth,
+        outputHeight
     );
 
     canvas.width =
-        cropWidth;
+        outputWidth;
 
     canvas.height =
-        cropHeight;
+        outputHeight;
 
     ctx.drawImage(
-        croppedCanvas,
+        outputCanvas,
         0,
         0
     );
 
     status.innerText =
-        "✓ ID Card Auto Cropped Successfully";
+        "✓ ID Card Cropped & Straightened";
 }
-
-
-function enhanceImage() {
-
-    if (canvas.width === 0) {
-
-        alert(
-            "Please select an ID Card first."
-        );
-
-        return;
-    }
-
-    const imgData =
-        ctx.getImageData(
-            0,
-            0,
-            canvas.width,
-            canvas.height
-        );
-
-    const data =
-        imgData.data;
-
-    for (
-        let i = 0;
-        i < data.length;
-        i += 4
-    ) {
-
-        data[i] =
-            Math.min(
-                255,
-                data[i] * 1.10
-            );
-
-        data[i + 1] =
-            Math.min(
-                255,
-                data[i + 1] * 1.10
-            );
-
-        data[i + 2] =
-            Math.min(
-                255,
-                data[i + 2] * 1.10
-            );
-    }
-
-    ctx.putImageData(
-        imgData,
-        0,
-        0
-    );
-
-    status.innerText =
-        "✓ Image Enhanced";
-}
-
-
-function saveImage() {
-
-    if (canvas.width === 0) {
-
-        alert(
-            "Please process an image first."
-        );
-
-        return;
-    }
-
-    const link =
-        document.createElement("a");
-
-    link.download =
-        "ID-Card-Enhanced.jpg";
-
-    link.href =
-        canvas.toDataURL(
-            "image/jpeg",
-            0.95
-        );
-
-    link.click();
-
-    status.innerText =
-        "✓ ID Card Saved";
-}
-
-</script>
