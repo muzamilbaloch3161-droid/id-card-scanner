@@ -1,274 +1,326 @@
-async function autoCrop() {
+function enhanceImage() {
 
-    status.innerText = "Detecting ID Card corners...";
+    if (canvas.width === 0) {
 
-    const maxSize = 1000;
-
-    let scale = Math.min(
-        1,
-        maxSize / Math.max(image.width, image.height)
-    );
-
-    const w = Math.round(image.width * scale);
-    const h = Math.round(image.height * scale);
-
-    const tempCanvas = document.createElement("canvas");
-
-    tempCanvas.width = w;
-    tempCanvas.height = h;
-
-    const tempCtx = tempCanvas.getContext("2d");
-
-    tempCtx.drawImage(
-        image,
-        0,
-        0,
-        w,
-        h
-    );
-
-    const imgData =
-        tempCtx.getImageData(
-            0,
-            0,
-            w,
-            h
+        alert(
+            "Please scan an ID Card first."
         );
 
-    const data = imgData.data;
-
-    let points = [];
-
-    /*
-        Find strong edges.
-    */
-
-    for (let y = 2; y < h - 2; y += 3) {
-
-        for (let x = 2; x < w - 2; x += 3) {
-
-            const p =
-                (y * w + x) * 4;
-
-            const right =
-                (y * w + x + 1) * 4;
-
-            const down =
-                ((y + 1) * w + x) * 4;
-
-            const r1 = data[p];
-            const g1 = data[p + 1];
-            const b1 = data[p + 2];
-
-            const r2 = data[right];
-            const g2 = data[right + 1];
-            const b2 = data[right + 2];
-
-            const r3 = data[down];
-            const g3 = data[down + 1];
-            const b3 = data[down + 2];
-
-            const brightness1 =
-                (r1 + g1 + b1) / 3;
-
-            const brightness2 =
-                (r2 + g2 + b2) / 3;
-
-            const brightness3 =
-                (r3 + g3 + b3) / 3;
-
-            const edge =
-                Math.abs(
-                    brightness1 -
-                    brightness2
-                )
-                +
-                Math.abs(
-                    brightness1 -
-                    brightness3
-                );
-
-            if (edge > 100) {
-
-                points.push({
-                    x: x,
-                    y: y
-                });
-
-            }
-        }
+        return;
     }
 
-    /*
-        If enough points exist,
-        calculate approximate card boundary.
-    */
+    status.innerText =
+        "Enhancing ID Card...";
 
-    if (points.length < 20) {
-
-        status.innerText =
-            "Could not detect ID Card.";
-
-        ctx.drawImage(
-            image,
+    const imgData =
+        ctx.getImageData(
             0,
             0,
             canvas.width,
             canvas.height
         );
 
-        return;
+    const data =
+        imgData.data;
+
+    /*
+        Professional enhancement settings
+    */
+
+    const contrast = 1.18;
+    const brightness = 8;
+    const saturation = 1.05;
+
+    /*
+        Calculate average brightness
+    */
+
+    let total = 0;
+
+    for (
+        let i = 0;
+        i < data.length;
+        i += 4
+    ) {
+
+        const gray =
+            0.299 * data[i] +
+            0.587 * data[i + 1] +
+            0.114 * data[i + 2];
+
+        total += gray;
     }
 
-    let minX = w;
-    let minY = h;
+    const pixels =
+        data.length / 4;
 
-    let maxX = 0;
-    let maxY = 0;
-
-    points.forEach(p => {
-
-        if (p.x < minX)
-            minX = p.x;
-
-        if (p.y < minY)
-            minY = p.y;
-
-        if (p.x > maxX)
-            maxX = p.x;
-
-        if (p.y > maxY)
-            maxY = p.y;
-
-    });
+    const average =
+        total / pixels;
 
     /*
-        Add small safety margin.
+        Automatic brightness correction
     */
 
-    const margin = 8;
+    let autoBrightness = 128 - average;
 
-    minX =
+    autoBrightness =
         Math.max(
-            0,
-            minX - margin
+            -20,
+            Math.min(
+                20,
+                autoBrightness * 0.35
+            )
         );
-
-    minY =
-        Math.max(
-            0,
-            minY - margin
-        );
-
-    maxX =
-        Math.min(
-            w,
-            maxX + margin
-        );
-
-    maxY =
-        Math.min(
-            h,
-            maxY + margin
-        );
-
-    let cropW =
-        maxX - minX;
-
-    let cropH =
-        maxY - minY;
 
     /*
-        ID card ratio.
-        Standard card ratio is about 1.586.
+        Apply enhancement
     */
 
-    const targetRatio = 1.586;
+    for (
+        let i = 0;
+        i < data.length;
+        i += 4
+    ) {
 
-    const currentRatio =
-        cropW / cropH;
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
 
-    if (currentRatio > targetRatio) {
+        /*
+            Brightness
+        */
 
-        const newW =
-            cropH * targetRatio;
+        r += brightness + autoBrightness;
+        g += brightness + autoBrightness;
+        b += brightness + autoBrightness;
 
-        const difference =
-            (cropW - newW) / 2;
+        /*
+            Contrast
+        */
 
-        minX += difference;
+        r =
+            (r - 128) *
+            contrast +
+            128;
 
-        cropW = newW;
+        g =
+            (g - 128) *
+            contrast +
+            128;
 
-    } else {
+        b =
+            (b - 128) *
+            contrast +
+            128;
 
-        const newH =
-            cropW / targetRatio;
+        /*
+            Slight color enhancement
+        */
 
-        const difference =
-            (cropH - newH) / 2;
+        const gray =
+            0.299 * r +
+            0.587 * g +
+            0.114 * b;
 
-        minY += difference;
+        r =
+            gray +
+            (r - gray) *
+            saturation;
 
-        cropH = newH;
+        g =
+            gray +
+            (g - gray) *
+            saturation;
 
+        b =
+            gray +
+            (b - gray) *
+            saturation;
+
+        /*
+            Keep RGB between 0 and 255
+        */
+
+        data[i] =
+            Math.max(
+                0,
+                Math.min(
+                    255,
+                    r
+                )
+            );
+
+        data[i + 1] =
+            Math.max(
+                0,
+                Math.min(
+                    255,
+                    g
+                )
+            );
+
+        data[i + 2] =
+            Math.max(
+                0,
+                Math.min(
+                    255,
+                    b
+                )
+            );
     }
 
-    /*
-        Create final high-resolution crop.
-    */
-
-    const outputWidth = 1600;
-    const outputHeight =
-        Math.round(
-            outputWidth / targetRatio
-        );
-
-    const outputCanvas =
-        document.createElement("canvas");
-
-    outputCanvas.width =
-        outputWidth;
-
-    outputCanvas.height =
-        outputHeight;
-
-    const outputCtx =
-        outputCanvas.getContext("2d");
-
-    outputCtx.imageSmoothingEnabled = true;
-
-    outputCtx.imageSmoothingQuality =
-        "high";
-
-    outputCtx.drawImage(
-        image,
-
-        minX / scale,
-        minY / scale,
-
-        cropW / scale,
-        cropH / scale,
-
-        0,
-        0,
-
-        outputWidth,
-        outputHeight
-    );
-
-    canvas.width =
-        outputWidth;
-
-    canvas.height =
-        outputHeight;
-
-    ctx.drawImage(
-        outputCanvas,
+    ctx.putImageData(
+        imgData,
         0,
         0
     );
 
+    /*
+        Extra sharpening using
+        a simple convolution.
+    */
+
+    sharpenCanvas();
+
     status.innerText =
-        "✓ ID Card Cropped & Straightened";
+        "✓ ID Card Enhanced & Sharpened";
+}
+
+
+function sharpenCanvas() {
+
+    const width =
+        canvas.width;
+
+    const height =
+        canvas.height;
+
+    const source =
+        ctx.getImageData(
+            0,
+            0,
+            width,
+            height
+        );
+
+    const output =
+        ctx.createImageData(
+            width,
+            height
+        );
+
+    const src =
+        source.data;
+
+    const dst =
+        output.data;
+
+    /*
+        Sharpening kernel
+    */
+
+    const kernel = [
+        0, -1, 0,
+        -1, 5, -1,
+        0, -1, 0
+    ];
+
+    for (
+        let y = 1;
+        y < height - 1;
+        y++
+    ) {
+
+        for (
+            let x = 1;
+            x < width - 1;
+            x++
+        ) {
+
+            let r = 0;
+            let g = 0;
+            let b = 0;
+
+            let k = 0;
+
+            for (
+                let ky = -1;
+                ky <= 1;
+                ky++
+            ) {
+
+                for (
+                    let kx = -1;
+                    kx <= 1;
+                    kx++
+                ) {
+
+                    const px =
+                        x + kx;
+
+                    const py =
+                        y + ky;
+
+                    const index =
+                        (py * width + px) * 4;
+
+                    const weight =
+                        kernel[k];
+
+                    r +=
+                        src[index] *
+                        weight;
+
+                    g +=
+                        src[index + 1] *
+                        weight;
+
+                    b +=
+                        src[index + 2] *
+                        weight;
+
+                    k++;
+                }
+            }
+
+            const index =
+                (y * width + x) * 4;
+
+            dst[index] =
+                Math.max(
+                    0,
+                    Math.min(
+                        255,
+                        r
+                    )
+                );
+
+            dst[index + 1] =
+                Math.max(
+                    0,
+                    Math.min(
+                        255,
+                        g
+                    )
+                );
+
+            dst[index + 2] =
+                Math.max(
+                    0,
+                    Math.min(
+                        255,
+                        b
+                    )
+                );
+
+            dst[index + 3] =
+                255;
+        }
+    }
+
+    ctx.putImageData(
+        output,
+        0,
+        0
+    );
 }
